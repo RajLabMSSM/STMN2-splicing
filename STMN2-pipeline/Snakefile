@@ -1,0 +1,188 @@
+# STMN2 (or other locus specific splicing)
+# Snakemake pipeline
+
+
+# dependencies:
+# samtools
+# regtools
+# python - pandas
+# R - leafcutter
+# R - a bunch of packages
+import pandas as pd
+import os
+import socket
+# get variables out of config.yaml
+
+leafcutterPath = config['leafcutterPath']
+python2Path = config['python2Path']
+python3Path = config['python3Path']
+dataCode = config['dataCode']
+
+print(dataCode)
+
+inFolder = config['inFolder']
+# create outFolder path using dataCode
+outFolder = config['outFolder'] + config['dataCode'] + '/'
+stranded = config['stranded']
+
+print(outFolder)
+
+metadata = config['metadata']
+bamSuffix = config['bamSuffix']
+# default is '.junc'; for samples processed with RAPiD use filtered junctions : '.Aligned.Quality.Sorted.bam.junc' 
+juncSuffix = config['juncSuffix']
+
+refCondition = config['refCondition']
+altCondition = config['altCondition']
+
+# annotation 
+refFolder = config['refFolder']
+refFile = config['refFile']
+refCode = config['refCode']
+
+# leafcutter options
+leafcutterOpt = config['leafcutter']
+# clustering options
+minCluRatio = leafcutterOpt["minCluRatio"]
+minCluReads = leafcutterOpt["minCluReads"]
+intronMax = leafcutterOpt["intronMax"]
+# ds options
+samplesPerIntron = leafcutterOpt["samplesPerIntron"]
+samplesPerGroup = leafcutterOpt["samplesPerGroup"]
+minCoverage = leafcutterOpt["minCoverage"]
+
+
+# get sample information of support file
+# using pandas
+samples = pd.read_csv(metadata, sep = '\t')['sample']
+
+
+# Chimera specific options
+isChimera = "hpc.mssm.edu" in socket.getfqdn()
+
+# not sure if this works when running in serial on interactive node
+if isChimera:
+	shell.prefix('export PS1="";source activate leafcutter-pipeline;ml R/3.6.0;')
+
+
+# regtools hardcoded
+clusterRegtools = config["clusterRegtools"]
+clusterScript = python3Path + " scripts/leafcutter_cluster_regtools.py"
+junctionMode = "regtools"
+strandParam = "" # strandParam only needed for normal clustering
+
+
+localrules: copyConfig, writeJunctionList
+
+rule all:
+	input: outFolder + dataCode + "_perind_numers.counts.gz"
+	#input: outFolder + dataCode + "_ds_support.tsv"
+
+# index bams if needed
+rule indexBams:
+	input:
+		bam = inFolder + '{samples}' + bamSuffix
+	output:
+		inFolder + '{samples}' + bamSuffix + ".bai"
+	shell:
+		"samtools index {input.bam}"
+
+
+# filter out low quality reads with Samtools
+# mapping quality > 30 (-q 30)
+# remove secondary alignments, vendor QC failing, supplementary alignments and PCR duplicates (-F 3840)
+# keep reads where both mates are mapped and properly paired (-f 3)
+rule filterReads:
+	input:
+		bam = inFolder + '{samples}' + bamSuffix,
+		bai = inFolder + '{samples}' + bamSuffix + ".bai"
+	params:
+		region = STMN2_coords,
+		flag_options = "-f   -F 768 ", # -f=include -F=exclude
+		qual_options = "-q 30 "
+	output:
+		bam = tempFolder + '{samples}' + "_filtered" + bamSuffix,
+		bai = tempFolder + '{samples}' + "_filtered" + bamSuffix + ".bai"
+	shell:
+		" samtools view -bh " 
+		" {params.qual_options} "
+		" {params.flag_options} "
+		" {input.bam} "
+		" {params.region} "
+		" > {output}; "
+		" samtools index {output} "
+
+# use regtools to extract junctions
+rule extractJunctions:
+	input:
+		bam = tempFolder + '{samples}' + "_filtered" + bamSuffix,
+		bai = tempFolder + '{samples}' + "_filtered" + bamSuffix + ".bai"
+	output:
+		'junctions/{samples}' + juncSuffix
+	shell:
+		#"samtools index {input};"	redundant if indexes are present
+		#"regtools junctions extract -a 8 -m 50 -M 500000 -s {stranded} -o {output} {input}"
+		# conda version of regtools uses i and I instead of m and M 
+		"regtools junctions extract -a 8 -i 50 -I 500000 -s {stranded} -o {output} {input.bam}"
+
+
+# copy the config and samples files in to the outFolder for posterity
+rule copyConfig:
+	input: 
+		config = workflow.overwrite_configfile,
+		metadata = metadata
+
+	output: 
+		config = outFolder + "config.yaml",
+		metadata = outFolder + "samples.tsv"
+	shell:
+		"cp {input.config} {output.config};"
+		"cp {input.metadata} {output.metadata}"
+
+# write junction list to file in python rather than bash
+# bash has limit on length of shell command - 1000 samples in an array doesn't work.
+rule writeJunctionList:
+	input:
+		juncFiles = expand('junctions/{samples}{junc}.nocontigs', samples = samples, junc = juncSuffix)
+	output:
+		junctionList = outFolder + "junctionList.txt",
+		tempFileList = outFolder + "tempFileList.txt"
+	params:
+		tempFiles = expand('{samples}{junc}.nocontigs.{dataCode}.sorted.gz', samples = samples, junc = juncSuffix, dataCode = dataCode )
+	run:
+		# write juncFiles to junctionList, tempFiles to tempFiles list
+		with open(output.junctionList, 'w') as f:
+			for item in input.juncFiles:
+				f.write("%s\n" % item)
+		with open(output.tempFileList, 'w') as f:
+			for item in params.tempFiles:
+				f.write("%s\n" % item)
+
+# Yang's script to cluster regtools junctions still uses python2
+# I took an updated version from a github fork and fixed the bugs
+# for samples processed with RAPiD just use the junctions from that and run the classic leafcutter_cluster.py
+rule clusterJunctions:
+	input: 
+		junctionList = outFolder + "junctionList.txt",
+		tempFileList = outFolder + "tempFileList.txt"
+	output:
+		clusters = outFolder + dataCode + "_perind_numers.counts.gz"
+	params:
+		#script = "scripts/leafcutter_cluster_regtools.py"
+		script = clusterScript,
+		strand = strandParam
+	shell:
+		#'touch {output.junctionList};'
+		#'for i in {input};'
+		#'do echo $i >> {output.junctionList};'
+		#'done;'
+		# from https://github.com/mdshw5/leafcutter/blob/master/scripts/leafcutter_cluster_regtools.py
+		# now lives inside the leafcutter pipeline repo 
+		'{params.script} '
+		'-j {input.junctionList} --minclureads {minCluReads} '
+		' {params.strand} '
+		'--mincluratio {minCluRatio}  -o {outFolder}{dataCode} -l {intronMax};'
+		# remove temporary files
+		'for i in $(cat {input.tempFileList}); do rm $i; done'
+
+

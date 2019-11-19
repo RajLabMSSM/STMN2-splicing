@@ -22,6 +22,7 @@ print(dataCode)
 
 inFolder = config['inFolder']
 # create outFolder path using dataCode
+tempFolder = config['outFolder'] + config['dataCode'] + '/temp/'
 outFolder = config['outFolder'] + config['dataCode'] + '/'
 stranded = config['stranded']
 
@@ -61,8 +62,7 @@ samples = pd.read_csv(metadata, sep = '\t')['sample']
 isChimera = "hpc.mssm.edu" in socket.getfqdn()
 
 # not sure if this works when running in serial on interactive node
-if isChimera:
-	shell.prefix('export PS1="";source activate leafcutter-pipeline;ml R/3.6.0;')
+shell.prefix('export PS1="";source activate leafcutter-pipeline;ml R/3.6.0;')
 
 
 # regtools hardcoded
@@ -71,6 +71,8 @@ clusterScript = python3Path + " scripts/leafcutter_cluster_regtools.py"
 junctionMode = "regtools"
 strandParam = "" # strandParam only needed for normal clustering
 
+# region - STMN2
+region = config["region"]
 
 localrules: copyConfig, writeJunctionList
 
@@ -89,7 +91,7 @@ rule indexBams:
 
 
 # filter out low quality reads with Samtools
-# mapping quality > 30 (-q 30)
+# retained only uniquely mapped reads ( -q 255)
 # remove secondary alignments, vendor QC failing, supplementary alignments and PCR duplicates (-F 3840)
 # keep reads where both mates are mapped and properly paired (-f 3)
 rule filterReads:
@@ -97,9 +99,9 @@ rule filterReads:
 		bam = inFolder + '{samples}' + bamSuffix,
 		bai = inFolder + '{samples}' + bamSuffix + ".bai"
 	params:
-		region = STMN2_coords,
-		flag_options = "-f   -F 768 ", # -f=include -F=exclude
-		qual_options = "-q 30 "
+		regionCoords = region, #STMN2 locus, see top of script
+		flag_options = "-f 3 -F 1024 -F 256 -F 512 -F 2048 -bh", # -f=include -F=exclude
+		qual_options = "-q 255 "
 	output:
 		bam = tempFolder + '{samples}' + "_filtered" + bamSuffix,
 		bai = tempFolder + '{samples}' + "_filtered" + bamSuffix + ".bai"
@@ -108,9 +110,9 @@ rule filterReads:
 		" {params.qual_options} "
 		" {params.flag_options} "
 		" {input.bam} "
-		" {params.region} "
-		" > {output}; "
-		" samtools index {output} "
+		" {params.regionCoords} "
+		" > {output.bam}; "
+		" samtools index {output.bam} "
 
 # use regtools to extract junctions
 rule extractJunctions:
@@ -143,12 +145,12 @@ rule copyConfig:
 # bash has limit on length of shell command - 1000 samples in an array doesn't work.
 rule writeJunctionList:
 	input:
-		juncFiles = expand('junctions/{samples}{junc}.nocontigs', samples = samples, junc = juncSuffix)
+		juncFiles = expand('junctions/{samples}{junc}', samples = samples, junc = juncSuffix)
 	output:
 		junctionList = outFolder + "junctionList.txt",
 		tempFileList = outFolder + "tempFileList.txt"
 	params:
-		tempFiles = expand('{samples}{junc}.nocontigs.{dataCode}.sorted.gz', samples = samples, junc = juncSuffix, dataCode = dataCode )
+		tempFiles = expand('{samples}{junc}{dataCode}.sorted.gz', samples = samples, junc = juncSuffix, dataCode = dataCode )
 	run:
 		# write juncFiles to junctionList, tempFiles to tempFiles list
 		with open(output.junctionList, 'w') as f:

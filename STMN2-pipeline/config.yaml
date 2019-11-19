@@ -1,0 +1,58 @@
+#####################
+#Leafcutter Pipeline#
+#####################
+
+# STMN2 genic region (UCSC hg38)
+region: "chr8:79,605,801-79,668,893"
+
+dataCode: 'all_nygc_nov_2019'
+#dataCode: "test"
+#metadata: "test_samples.tsv"
+metadata: "all_nygc_samples.tsv" 
+# dataCode will be appended to outFolder
+outFolder: 'results/'
+
+# differential splicing - set reference and alternate conditions
+refCondition: 'siControl'
+altCondition: 'siTDP-43'
+
+inFolder: 'data/'
+
+# bamSuffix - what to append to the sample name to get the BAM file name
+bamSuffix: '.bam'
+
+# juncSuffix
+# for samples processed with RAPiD use filtered junctions : {sample}.Aligned.Quality.Sorted.bam.junc 
+juncSuffix: '.Aligned.Quality.Sorted.bam.junc' 
+
+# how the stranding was done (0 = unstranded, 1 = first-strand/RF, 2, = second-strand/FR)
+# this assumes stranding same for every sample
+stranded: 2
+
+
+## Leafcutter settings ---------------------------------
+
+# cluster using regtools junctions or STAR-like junctions
+# regtools or rapid
+clusterRegtools: True
+
+leafcutterPath: '/hpc/users/humphj04/software/leafcutter'
+
+leafcutter:
+        # clustering options
+        minCluRatio: 0.0001
+        minCluReads: 30
+        intronMax: 100000
+        n_threads: 1
+        # ds options
+        samplesPerIntron: 2
+        samplesPerGroup: 2
+        minCoverage: 20
+        n_threads: 4
+python3Path: 'python3'
+python2Path: 'python2'
+
+refFolder: "/sc/orga/projects/ad-omics/data/references/hg38_reference/GENCODE/"
+refFile: "gencode.v30.annotation.gtf.gz"
+refCode: "gencode_hg38_v30"
+

@@ -8,7 +8,7 @@ region: "chr8:79,605,801-79,668,893"
 dataCode: 'all_nygc_nov_2019'
 #dataCode: "test"
 #metadata: "test_samples.tsv"
-metadata: "all_nygc_samples.tsv" 
+metadata: "all_nygc_samples_CNS_only.tsv" 
 # dataCode will be appended to outFolder
 outFolder: 'results/'
 

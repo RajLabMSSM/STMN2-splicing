@@ -57,6 +57,7 @@ minCoverage = leafcutterOpt["minCoverage"]
 # using pandas
 samples = pd.read_csv(metadata, sep = '\t')['sample']
 
+print("Metadata contains %s samples" % str(len(samples)) )
 
 # Chimera specific options
 isChimera = "hpc.mssm.edu" in socket.getfqdn()
@@ -150,7 +151,7 @@ rule writeJunctionList:
 		junctionList = outFolder + "junctionList.txt",
 		tempFileList = outFolder + "tempFileList.txt"
 	params:
-		tempFiles = expand('{samples}{junc}{dataCode}.sorted.gz', samples = samples, junc = juncSuffix, dataCode = dataCode )
+		tempFiles = expand('{samples}{junc}.{dataCode}.sorted.gz', samples = samples, junc = juncSuffix, dataCode = dataCode )
 	run:
 		# write juncFiles to junctionList, tempFiles to tempFiles list
 		with open(output.junctionList, 'w') as f:

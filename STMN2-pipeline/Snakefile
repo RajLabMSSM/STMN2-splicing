@@ -78,18 +78,37 @@ region = config["region"]
 localrules: copyConfig, writeJunctionList
 
 rule all:
-	input: outFolder + dataCode + "_perind_numers.counts.gz"
+	input: outFolder + dataCode + "_perind_numers.counts.gz",
+		outFolder + dataCode + "_library_sizes.tsv",
 	#input: outFolder + dataCode + "_ds_support.tsv"
 
 # index bams if needed
 rule indexBams:
 	input:
-		bam = inFolder + '{samples}' + bamSuffix
+		bam = inFolder + "bams/" + '{samples}' + bamSuffix
 	output:
-		inFolder + '{samples}' + bamSuffix + ".bai"
+		inFolder + "bams/" + '{samples}' + bamSuffix + ".bai"
 	shell:
 		"samtools index {input.bam}"
 
+# find Library size from Picard output
+# keep in inFolder/metrics
+rule findLibrarySizeFromPicard:
+	input:
+		expand('{inFolder}metrics/{samples}.AlignmentSummaryMetrics', inFolder = inFolder, samples = samples)
+	output:
+		outFolder + dataCode + "_library_sizes.tsv"
+	shell:
+		'''
+		for i in {input}; do
+		cat $i | 
+		awk -v name=$i '
+			$1 == "PAIR" {{
+			gsub(".AlignmentSummaryMetrics", "", name)
+			print name"\\t"$6
+		}}'
+		done > {output}
+		'''
 
 # filter out low quality reads with Samtools
 # retained only uniquely mapped reads ( -q 255)
@@ -97,8 +116,8 @@ rule indexBams:
 # keep reads where both mates are mapped and properly paired (-f 3)
 rule filterReads:
 	input:
-		bam = inFolder + '{samples}' + bamSuffix,
-		bai = inFolder + '{samples}' + bamSuffix + ".bai"
+		bam = inFolder + "bams/" +'{samples}' + bamSuffix,
+		bai = inFolder + "bams/" + '{samples}' + bamSuffix + ".bai"
 	params:
 		regionCoords = region, #STMN2 locus, see top of script
 		flag_options = "-f 3 -F 1024 -F 256 -F 512 -F 2048 -bh", # -f=include -F=exclude

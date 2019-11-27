@@ -10,7 +10,7 @@ Investigating STMN2 cryptic splicing across the NYGC ALS consortium RNA-seq data
 
 [STMN2-pipeline](https://github.com/RajLabMSSM/STMN2-splicing/tree/master/STMN2-pipeline): a snakemake pipeline for extracting high quality junction reads and clustering them together
 
-[Exploratory plots](https://rajlabmssm.github.io/STMN2-splicing/STMN2_splicing.html)
+[Exploratory plots](https://rajlabmssm.github.io/STMN2-splicing/STMN2_exploration.html)
 
 
 

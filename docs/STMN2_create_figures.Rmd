@@ -1,0 +1,893 @@
+---
+title: "Truncated stathmin-2 is a surrogate marker of TDP-43 pathology in frontotemporal dementia"
+subtitle: "RNA-seq analysis on NYGC ALS Consortium samples"
+author: "Jack Humphrey"
+output: 
+  html_document:
+    theme: paper
+    highlight: tango
+    toc: true
+    toc_float: true
+    code_folding: hide
+    df_print: paged
+    fig_retina: null
+  message: FALSE
+  warning: FALSE
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
+
+
+# my own ggplot2 theme
+# clean, black text, white backgrounds, no gridlines
+# tinkered with from http://joeystanley.com/blog/custom-themes-in-ggplot2
+theme_jh <- function () { 
+    theme_bw(base_size=10) %+replace% 
+        theme(
+          panel.grid = element_blank(),
+          strip.background = element_blank(),
+          #panel.border = element_blank(),
+          axis.line = element_line(),
+          #text = element_text(color = "black"), 
+          strip.text = element_text(color = "black"),
+          axis.text = element_text(colour = "black"),
+            panel.background  = element_blank(),
+            plot.background = element_rect(fill="white", colour=NA), 
+            legend.background = element_rect(fill="transparent", colour=NA),
+            legend.key = element_rect(fill="transparent", colour=NA),
+          plot.title = element_text(face = "bold"), 
+          panel.border = element_blank()
+        )
+}
+
+
+library(tidyverse)
+library(janitor)
+library(patchwork)
+
+
+```
+
+## Read in data
+
+```{r}
+stmn2_data <- read_tsv("data/STMN2_NYGC_RNA_data.tsv")
+
+stmn2_data <- rename(stmn2_data, disease = disease_group)
+
+stmn2_data <- stmn2_data %>%
+  mutate( tissue = factor(tissue, 
+                          levels = c("Frontal Cortex", "Temporal Cortex", "Hippocampus", "Lateral Motor Cortex", "Medial Motor Cortex", "Other Motor Cortex", "Occipital Cortex", "Cerebellum",   "Cervical Spinal Cord", "Thoracic Spinal Cord", "Lumbar Spinal Cord") ) ) %>%
+  mutate(disease = factor(disease, levels = c("Control", "ALS-TDP", "ALS/AD", "ALS-SOD1", "ALS/FTLD", "FTLD-TDP", "FTLD-FUS", "FTLD-TAU")) )
+stmn2_data$tSTMN2_status <- stmn2_data$tSTMN2_counts > 1
+
+stmn2_data
+
+```
+
+
+
+```{r}
+n_samples <- nrow(stmn2_data)
+
+n_tstmn2 <- stmn2_data %>%
+  filter(tSTMN2_status == TRUE) %>%
+  nrow()
+
+n_tstmn2 / n_samples
+
+tSTMN2_positive <- stmn2_data %>%
+  filter(tSTMN2_status == TRUE)
+
+#tSTMN2_positive %>% pull(tSTMN2_counts) %>% boxplot(main = "tSTMN2 counts")
+
+#tSTMN2_positive %>% pull(tSTMN2_counts) %>% summary()
+
+
+
+```
+
+
+
+# Full length STMN2 expression 
+
+```{r fig.width = 10, fig.height = 6}
+
+stmn2_total <-
+  stmn2_data %>%
+  filter( disease %in% c("Control", "ALS-TDP")) %>%
+  mutate( disease = forcats::fct_relevel(disease, "Control")) %>%
+  filter( !is.na(sequencing_platform)) %>%
+  filter( !is.na(RIN)) %>%
+filter(tissue %in% c("Frontal Cortex", "Cerebellum", "Cervical Spinal Cord", "Lumbar Spinal Cord", "Lateral Motor Cortex", "Medial Motor Cortex")) 
+
+
+stmn2_full_expression_plot <- 
+  stmn2_total %>%
+  ggplot(aes( x = disease, y = log2(STMN2_TPM + 1), group = disease )) + 
+  geom_point(aes(colour = disease),size = 0.5, position = position_jitter(width = 0.2, height = 0) ) + 
+  facet_wrap(~sequencing_platform + tissue, ncol = 6) +
+  labs(y = expression(log[2]~(TPM+1)), x = "", title = "STMN2 total gene expression by disease and library prep") +
+  scale_colour_manual(values = c("gray48", "firebrick")) +
+  guides(colour = FALSE) +
+  theme_jh() +
+  #ylim(0,10 ) +
+  geom_boxplot(fill = NA, outlier.colour = NA) +
+  theme(panel.border = element_rect(fill =NA)) +
+  ggpubr::stat_compare_means(label = "p.format", label.x.npc = "centre", method = "wilcox.test" )
+
+stmn2_full_RIN_boxplot <- 
+  stmn2_total %>%
+  #filter( sequencing_platform %in% c("HiSeq 2500", "NovaSeq")) %>%
+  ggplot(aes( x = disease, y = RIN )) + 
+  geom_point(aes(colour = disease), size = 0.5, alpha = 0.9, position = position_jitter(width = 0.2, height = 0) ) + 
+  facet_wrap(~ sequencing_platform + tissue, ncol = 6) +
+  #ylim(2,10) +
+  labs(y = "RIN", x = "", title = "Effect of sequencing sequencing_platform on RIN in ALS-TDP samples") +
+  scale_colour_manual(values = c("gray48", "firebrick")) +
+  scale_alpha_manual(values = c(1,0.1) ) +
+  guides(colour = FALSE) +
+  theme_jh() +
+  geom_boxplot(fill = NA, colour = "black", outlier.colour = NA) +
+  theme(panel.border = element_rect(fill =NA)) +
+  ggpubr::stat_compare_means(label = "p.format", label.x.npc = "centre", method = "wilcox.test")
+
+
+stmn2_full_RIN_corplot <- 
+  stmn2_total %>%
+  ggplot(aes( x = RIN, y = log2(STMN2_TPM + 1) )) + 
+  geom_point(aes(colour = disease), size = 0.5, alpha = 0.9) +
+  scale_colour_manual(values = c("gray48", "firebrick")) +
+  facet_wrap(~ sequencing_platform + tissue, ncol = 6) +
+  labs(y = expression(log[2]~(TPM+1)), x = "RIN", title = "STMN2 total gene expression and RIN") +
+  scale_alpha_manual(values = c(1,0.1)) +
+  #ylim(0,10) + 
+  guides(colour = FALSE) +
+  theme_jh() +
+  theme(panel.border = element_rect(fill =NA)) +
+  geom_smooth(method = "lm", colour = "black") + 
+  ggpubr::stat_cor(colour = "black",method = "spearman")
+
+
+stmn2_full_expression_plot 
+stmn2_full_RIN_boxplot 
+stmn2_full_RIN_corplot
+
+#stmn2_full_plot <- 
+# stmn2_full_expression_plot + 
+#   stmn2_full_RIN_boxplot + 
+#   stmn2_full_RIN_corplot + 
+#   plot_layout(nrow = 3) +
+#   plot_annotation(tag_levels = "A") & 
+#   theme(plot.tag = element_text(size = 12, face = "bold"))
+# 
+# #ggsave(plot =stmn2_full_plot, width = 14, height = 12, filename = here::here("figures/STMN2_full_supplementary_fig.pdf"), bg = "white" )
+# 
+# #ggsave(plot =stmn2_full_plot, width = 14, height = 12, filename = here::here("figures/STMN2_full_supplementary_fig.png"), bg = "white", dpi = 300 )
+# 
+# stmn2_full_plot
+
+```
+
+
+## Truncated STMN2 novel splicing in full dataset
+
+Treat as binary outcome
+
+Plot all junction discovery rates in each condition and tissue
+
+```{r fig.width = 12, fig.height = 10, dpi = 300}
+
+tstmn2_full_dataset <- 
+  stmn2_data %>% 
+  mutate(stmn2_detection = tSTMN2_counts > 1) %>%
+  group_by(disease) %>%
+  summarise( samples = n(), stmn2_n = sum(stmn2_detection), stmn2_prop = sum(stmn2_detection) / n() ) %>%
+  mutate( stmn2_prop_label = paste0(round(stmn2_prop * 100, digits = 1), "%")) %>%
+  mutate( stmn2_prop_label = ifelse( stmn2_prop_label == "0%", "", stmn2_prop_label)) %>%
+  mutate( stmn2_prop_label = gsub("\\.", "·", stmn2_prop_label)) %>%
+  mutate(tissue = "Full Dataset")
+
+tstmn2_by_tissue <- 
+  stmn2_data %>%
+  mutate(stmn2_detection = tSTMN2_counts > 1) %>%
+  group_by(tissue, disease) %>%
+  summarise( samples = n(), stmn2_n = sum(stmn2_detection), stmn2_prop = sum(stmn2_detection) / n() ) %>%
+  mutate( stmn2_prop_label = paste0(round(stmn2_prop * 100, digits = 1), "%")) %>%
+  mutate( stmn2_prop_label = ifelse( stmn2_prop_label == "0%", "", stmn2_prop_label)) %>%
+  mutate( stmn2_prop_label = gsub("\\.", "·", stmn2_prop_label)) %>%
+  ungroup() 
+
+
+tstmn2_all_samples <- 
+  tibble(tissue = "Full Dataset", disease = "All samples", samples = nrow(stmn2_data), stmn2_n = stmn2_data %>% filter(tSTMN2_counts > 1) %>% nrow() ) %>%
+  mutate(stmn2_prop = stmn2_n / samples) %>%
+  mutate(stmn2_prop_label = paste0( round(stmn2_prop * 100, digits = 1), "%")) %>%
+  mutate( stmn2_prop_label = gsub("\\.", "·", stmn2_prop_label))
+
+
+stmn2_to_plot <-
+  bind_rows(
+    tstmn2_by_tissue,
+    tstmn2_full_dataset,
+    tstmn2_all_samples
+  ) %>%
+   mutate(tissue = factor(tissue, levels = c("Full Dataset", "Frontal Cortex", "Temporal Cortex", "Hippocampus", "Lateral Motor Cortex", "Medial Motor Cortex", "Other Motor Cortex", "Occipital Cortex", "Cerebellum",   "Cervical Spinal Cord", "Thoracic Spinal Cord", "Lumbar Spinal Cord") )) %>%
+  mutate(disease = factor(disease, levels = c("All samples", "Control", "ALS-TDP", "ALS/AD", "ALS-SOD1", "ALS/FTLD", "FTLD-TDP", "FTLD-FUS", "FTLD-TAU"))) %>%
+  filter( !is.na(tissue) & !is.na(disease)) %>%
+  mutate(disease = forcats::fct_rev(disease))
+
+
+stmn2_threshold_plot <-
+  stmn2_to_plot %>%
+  ggplot(aes(x = disease, y = stmn2_prop ) ) +
+  geom_col(aes(fill = disease), colour = "white") +
+  #facet_wrap(~Tissue) +
+  #coord_flip() + 
+  geom_text(data = select(stmn2_to_plot, tissue, disease, samples) %>% distinct(), aes(label = samples), y = 1.1, size = 3.5) +
+  geom_text(data = filter(stmn2_to_plot, stmn2_prop < 0.8), aes(label = stmn2_prop_label) , nudge_y = 0.1, size = 3.5) +
+  geom_text(data = filter(stmn2_to_plot, stmn2_prop >= 0.8), aes(label = stmn2_prop_label), nudge_y = -0.12, size = 3.5, colour = "white") +
+  scale_y_continuous(expand = c(0,0), limits = c(0,1.2),labels = scales::percent, breaks = c(0,0.25,0.5,0.75,1) ) +
+  #geom_errorbar(aes(ymin = prop, ymax = binom_conf_upper)) +
+  facet_wrap(~tissue, scales = "free_y") +
+  geom_hline(yintercept = 1, linetype = 3) +
+  labs(x = "", y = "Truncated STMN2 detection rate") + 
+  coord_flip() +
+  #labs(y = "% of samples with 2 or more novel STMN2 junction reads", x = "", title = "STMN2 novel splicing across disease and tissue") +
+  theme_jh() +
+  scale_fill_manual(values = c("Control" = "gray", "ALS-TDP" = "firebrick", "FTLD-TDP" = "darkblue", "ALS/FTLD" = "purple4", "ALS/AD" = "maroon", "ALS-SOD1" = "goldenrod", "FTLD-TAU" = "darkblue", "FTLD-FUS" = "darkblue", "All samples" = "black")) +
+  #scale_alpha_manual("read\nthreshold",values = c(0.3,0.6,1) ) +
+  theme( panel.border = element_rect(fill = NA), axis.line = element_blank(), plot.title = element_text(size = 14), 
+         strip.text = element_text(face = "bold", margin = margin(t = 5, r = 0, b = 2, l = 0, unit = "pt")), plot.background = element_rect(fill = "white", colour = NA) ) +
+  guides(fill = FALSE)
+
+stmn2_threshold_plot
+
+#ggsave(plot = stmn2_threshold_plot, dpi = 600, width = 14, height = 9, filename = here::here("figures/tSTMN2_detection_by_tissue.png"), bg = "white" )
+#ggsave(plot = stmn2_threshold_plot, width = 14, height = 9, filename = here::here("figures/tSTMN2_detection_by_tissue.pdf"), bg = "white" ) 
+
+  
+  # mutate( tdp_status = ifelse(tdp_status == "TDP-43 negative", yes = "-other", no = "-TDP")) %>%
+  # group_by(Tissue = tissue, Disease = subtype,`TDP-43` = tdp_status) %>%
+  # summarise( samples = n(), `≥1` = sum(stmn2_1), `≥2` = sum(stmn2_2), `>5` = sum(stmn2_5)  ) %>%
+  # knitr::kable(align = "c") %>%
+  # kableExtra::kable_styling(full_width = FALSE) %>%
+  # kableExtra::add_header_above(c(" " = 4, "Samples with Truncated STMN2 detection reads" = 3)) %>%
+  #  kableExtra::column_spec(4, bold = TRUE) %>%
+  # kableExtra::collapse_rows(columns = 1:2)
+```
+
+
+## Selected Truncated STMN2 detection rates
+
+### ALS and FTLD
+
+```{r fig.width = 16, fig.height = 7}
+
+# add sample numbers to condition labels
+stmn2_main_plot <-
+  tstmn2_by_tissue %>%
+  mutate(tissue = gsub(" ", "\n", tissue)) %>%
+  mutate(disease = factor(disease, levels = c("Control", "ALS-TDP", "ALS/FTLD", "ALS/AD", "FTLD-TDP", "ALS-SOD1", "FTLD-FUS", "FTLD-TAU"))) %>%
+  mutate(tissue = factor(tissue, levels = c("Frontal\nCortex","Lateral\nMotor\nCortex", "Medial\nMotor\nCortex", "Other\nMotor\nCortex", "Temporal\nCortex", "Hippocampus", "Occipital\nCortex", "Cerebellum", "Cervical\nSpinal\nCord", "Thoracic\nSpinal\nCord", "Lumbar\nSpinal\nCord")) ) %>%
+  mutate( sample_n = paste0(disease,"\nN = ",samples)) %>%
+  mutate(tissue_n = paste0(tissue, "\nN = ",samples) ) %>%
+  filter(!is.na(tissue))
+
+# all tissues, FTLD-TDP
+FTLD_all <- 
+  stmn2_main_plot %>%
+  filter(disease %in% c("FTLD-TDP") )  %>%
+  arrange( tissue) %>%
+  mutate( tissue_n = factor(tissue_n,levels = tissue_n) )
+
+FTLD_all_plot <- 
+  FTLD_all %>%
+  ggplot(aes(x = tissue_n, y = stmn2_prop ) ) +
+  geom_col(fill = "darkblue", colour = "white") +
+  scale_y_continuous(expand = c(0,0), limits = c(0,1.1),labels = scales::percent ) +
+  #geom_text(data = select(., tissue, disease, samples) %>% distinct(), aes(label = samples), y = 1.05, size = 3) #+
+  geom_text(data = filter(FTLD_all, stmn2_prop < 0.9), aes(label = stmn2_prop_label) , nudge_y = 0.05, size = 3) +
+  geom_text(data = filter(FTLD_all, stmn2_prop >= 0.9), aes(label = stmn2_prop_label), nudge_y = -0.05, size = 3, colour = "white") +
+  theme_jh() +
+  labs(title = "FTLD-TDP by tissue", y = "Truncated STMN2 detection", x = "") +
+  theme(plot.title = element_text(hjust = 0.5))
+
+als_all <- 
+  stmn2_main_plot %>%
+  filter(disease %in% c("ALS-TDP") )%>%
+  #filter( tissue %in%  c("Frontal\nCortex", "Lateral\nMotor\nCortex", "Medial\nMotor\nCortex", "Occipital\nCortex", "Cerebellum", "Cervical\nSpinal\nCord", "Lumbar\nSpinal\nCord")) %>%
+  arrange( tissue) %>%
+  mutate( tissue_n = factor(tissue_n,levels = tissue_n) )
+
+als_all_plot <- 
+  als_all %>%
+  ggplot(aes(x = tissue_n, y = stmn2_prop ) ) +
+  geom_col(fill = "firebrick", colour = "white") +
+  scale_y_continuous(expand = c(0,0), limits = c(0,1.1),labels = scales::percent ) +
+  #geom_text(data = select(., tissue, disease, samples) %>% distinct(), aes(label = samples), y = 1.05, size = 3) #+
+  geom_text(data = filter(als_all, stmn2_prop < 0.9), aes(label = stmn2_prop_label) , nudge_y = 0.05, size = 3) +
+  geom_text(data = filter(als_all, stmn2_prop >= 0.9), aes(label = stmn2_prop_label), nudge_y = -0.05, size = 3, colour = "white") +
+  theme_jh() +
+  labs(title = "ALS-TDP by tissue", y = "Truncated STMN2 detection", x = "") +
+  theme(plot.title = element_text(hjust = 0.5))
+
+
+als_matrix <- stmn2_data %>% 
+  mutate(disease = factor(disease, levels = c("Control", "ALS-TDP", "FTLD-TDP", "ALS-SOD1", "FTLD-FUS", "FTLD-TAU", "ALS/FTLD"))) %>%
+  #filter(disease == "ALS-TDP") %>%
+  mutate(stmn = as.numeric(tSTMN2_counts > 1) ) %>%
+  filter( disease %in% c("Control", "ALS-TDP", "ALS-SOD1")) %>%
+  filter(tissue %in%  "Lumbar Spinal Cord") %>%
+  select(donor, tissue, stmn, disease) %>%
+  group_by(donor, disease) %>%
+  summarise( n_tissues = sum(stmn, na.rm = TRUE)) %>%
+  mutate( stmn_hit = n_tissues > 0) %>%
+  group_by( disease) %>%
+  summarise( samples = n() , stmn_prop = sum(stmn_hit) / n() ) %>%
+  mutate( stmn2_prop_label = paste0(signif(stmn_prop * 100, digits = 3), "%" ) ) %>%
+  mutate( stmn2_prop_label = gsub("\\.", "·", stmn2_prop_label)) %>%
+  mutate( stmn2_prop_label = ifelse( stmn2_prop_label == "0%", "", stmn2_prop_label)) %>%
+  mutate( sample_n = paste0(disease,"\nN = ",samples)) %>%
+  mutate( sample_n = factor(sample_n,levels = sample_n) )
+
+als_total_plot <- 
+  als_matrix %>%
+  ggplot(aes(x = sample_n, y = stmn_prop ) ) +
+  geom_col(fill = "firebrick", colour = "white") +
+  scale_y_continuous(expand = c(0,0), limits = c(0,1),labels = scales::percent ) +
+  geom_text(data = filter(als_matrix, stmn_prop < 0.9), aes(label = stmn2_prop_label) , nudge_y = 0.05, size = 3) +
+  geom_text(data = filter(als_matrix, stmn_prop >= 0.9), aes(label = stmn2_prop_label), nudge_y = -0.05, size = 3, colour = "white") +
+  labs(title = "ALS-TDP\nLumbar Spinal Cord", x = "", y = "Truncated STMN2 detection") +
+  theme_jh() +
+  theme(plot.title = element_text(hjust = 0.5))
+
+
+FTLD_matrix <- 
+  stmn2_data %>% 
+  mutate(disease = factor(disease, levels = c("Control", "ALS-TDP", "FTLD-TDP", "ALS-SOD1", "FTLD-FUS", "FTLD-TAU", "ALS/FTLD"))) %>%
+  filter( disease %in% c("Control", "FTLD-TDP", "FTLD-TAU", "FTLD-FUS")) %>%
+  mutate(stmn = as.numeric(tSTMN2_counts > 1) ) %>%
+  filter(tissue %in% c("Frontal Cortex")) %>%
+  select(donor, tissue, stmn, disease) %>%
+  group_by(donor, disease) %>%
+  summarise( n_tissues = sum(stmn, na.rm = TRUE)) %>%
+  mutate( stmn_hit = n_tissues > 0) %>%
+  group_by( disease) %>%
+  summarise( samples = n() , stmn_prop = sum(stmn_hit) / n() ) %>%
+  mutate( stmn2_prop_label = paste0(signif(stmn_prop * 100, digits = 3), "%" ) ) %>%
+  mutate( stmn2_prop_label = ifelse( stmn2_prop_label == "0%", "", stmn2_prop_label)) %>%
+  mutate( stmn2_prop_label = gsub("\\.", "·", stmn2_prop_label)) %>%
+  mutate( sample_n = paste0(disease,"\nN = ",samples)) %>%
+  mutate( sample_n = factor(sample_n,levels = sample_n) )
+
+
+FTLD_total_plot <- 
+  FTLD_matrix %>%
+  ggplot(aes(x = sample_n, y = stmn_prop ) ) +
+  geom_col(fill = "darkblue", colour = "white") +
+  scale_y_continuous(expand = c(0,0), limits = c(0,1),labels = scales::percent ) +
+  geom_text(data = filter(FTLD_matrix, stmn_prop < 0.9), aes(label = stmn2_prop_label) , nudge_y = 0.05, size = 3) +
+  geom_text(data = filter(FTLD_matrix, stmn_prop >= 0.9), aes(label = stmn2_prop_label), nudge_y = -0.05, size = 3, colour = "white") +
+  labs(title = "FTLD-TDP\nFrontal Cortex", x = "", y = "Truncated STMN2 detection") +
+  theme_jh() +
+  theme(plot.title = element_text(hjust = 0.5))
+
+#library(magick)
+#schematic_img <- image_read("../figures/STMN2_schematic.png" )
+
+schematic <- ggplot() + theme_void()
+
+tSTMN2_detection_spotlight <- 
+  (schematic + FTLD_total_plot + als_total_plot  ) /
+(FTLD_all_plot + als_all_plot + plot_layout(widths = c(1.8,4) ) )  +
+  plot_annotation(tag_levels = 'A') &
+  theme(plot.tag = element_text(size = 14, face = "bold" ), plot.title = element_text(face = "bold"), strip.background = element_blank(), plot.background = element_blank(),panel.background = element_blank(), panel.border = element_blank() )
+
+tSTMN2_detection_spotlight
+
+#install.packages("svglite")
+#ggsave(plot = tSTMN2_detection_spotlight, file = here::here("figures/tSTMN2_detection_main_figure.pdf"), width = 14, height = 7, units = "in")
+```
+
+### ALS/FTLD and ALS/AD
+
+```{r fig.width = 12, fig.height =7}
+als_ftd_all <- 
+  stmn2_main_plot %>%
+  filter(disease %in% c("ALS/FTLD") )%>%
+  filter( tissue %in%  c("Frontal\nCortex", "Hippocampus", "Lateral\nMotor\nCortex", "Medial\nMotor\nCortex", "Occipital\nCortex", "Cerebellum", "Cervical\nSpinal\nCord", "Lumbar\nSpinal\nCord")) %>%
+  arrange( tissue) %>%
+  mutate( tissue_n = factor(tissue_n,levels = tissue_n) )
+
+als_ftd_all_plot <- 
+  als_ftd_all %>%
+  ggplot(aes(x = tissue_n, y = stmn2_prop ) ) +
+  geom_col(fill = "purple4", colour = "white") +
+  scale_y_continuous(expand = c(0,0), limits = c(0,1.1),labels = scales::percent ) +
+  #geom_text(data = select(., tissue, disease, samples) %>% distinct(), aes(label = samples), y = 1.05, size = 3) #+
+  geom_text(data = filter(als_ftd_all, stmn2_prop < 0.9), aes(label = stmn2_prop_label) , nudge_y = 0.05, size = 3) +
+  geom_text(data = filter(als_ftd_all, stmn2_prop >= 0.9), aes(label = stmn2_prop_label), nudge_y = -0.05, size = 3, colour = "white") +
+  theme_jh() +
+  labs(title = "ALS/FTLD by tissue", y = "Truncated STMN2 detection", x = "") +
+  theme(plot.title = element_text(hjust = 0.5))
+
+
+als_ad_all <- 
+  stmn2_main_plot %>%
+  filter(disease %in% c("ALS/AD") )%>%
+  filter( tissue %in%  c("Frontal\nCortex", "Hippocampus", "Lateral\nMotor\nCortex", "Medial\nMotor\nCortex", "Occipital\nCortex", "Cerebellum", "Cervical\nSpinal\nCord", "Lumbar\nSpinal\nCord")) %>%
+  arrange( tissue) %>%
+  mutate( tissue_n = factor(tissue_n,levels = tissue_n) )
+
+als_ad_all_plot <- 
+  als_ad_all %>%
+  ggplot(aes(x = tissue_n, y = stmn2_prop ) ) +
+  geom_col(fill = "maroon", colour = "white") +
+  scale_y_continuous(expand = c(0,0), limits = c(0,1.1),labels = scales::percent ) +
+  #geom_text(data = select(., tissue, disease, samples) %>% distinct(), aes(label = samples), y = 1.05, size = 3) #+
+  geom_text(data = filter(als_ad_all, stmn2_prop < 0.9), aes(label = stmn2_prop_label) , nudge_y = 0.05, size = 3) +
+  geom_text(data = filter(als_ad_all, stmn2_prop >= 0.9), aes(label = stmn2_prop_label), nudge_y = -0.05, size = 3, colour = "white") +
+  theme_jh() +
+  labs(title = "ALS/AD by tissue", y = "Truncated STMN2 detection", x = "") +
+  theme(plot.title = element_text(hjust = 0.5))
+
+als_ftd_als_ad_plot <- 
+  als_ftd_all_plot +
+  als_ad_all_plot +
+  plot_layout(nrow = 2)  +plot_annotation(tag_levels = 'A') &
+  theme(plot.tag = element_text(size = 14, face = "bold" ) )
+
+
+als_ftd_als_ad_plot 
+
+#ggsave(plot = als_ftd_als_ad_plot, width = 12, height = 6, units = "in", dpi = 300, file = here::here("figures/tSTMN2_detection_ALSFTD_ALSAD.png") )
+#ggsave(plot = als_ftd_als_ad_plot, width = 12, height = 6, units = "in", file = here::here("figures/tSTMN2_detection_ALSFTD_ALSAD.pdf") )
+```
+
+
+
+
+
+## Truncated STMN2 expression levels
+
+```{r fig.width = 10, fig.height = 6}
+# diagnostic plot
+tstmn2_diagnostics <- 
+  stmn2_data %>%
+   mutate( disease = factor(disease, levels = c("Control", "ALS-TDP", "FTLD-TDP", "ALS/FTLD", "ALS/AD"))) %>%
+  filter(!is.na(sequencing_platform)) %>%
+  filter(tSTMN2_counts > 1) %>%
+  filter( disease %in% c("ALS-TDP", "FTLD-TDP", "ALS/FTLD", "ALS/AD")) %>%
+  filter(tissue %in% c("Frontal Cortex", "Temporal Cortex", "Cervical Spinal Cord", "Lumbar Spinal Cord", "Lateral Motor Cortex", "Medial Motor Cortex")) 
+
+# raw counts
+counts_by_disease_plot <-  
+  tstmn2_diagnostics %>%
+  ggplot(aes( x = disease, y = tSTMN2_counts, group = disease, colour = disease )) + 
+  geom_boxplot(fill = NA, colour = "black", outlier.colour = NA) +
+  geom_point(size = 0.5, position = position_jitter(width = 0.2, height = 0) ) + 
+  scale_y_continuous(trans='log10', breaks = c(2, 10,100), limits = c(2, 130)) +
+  facet_wrap(~tissue, nrow = 1, scales = "free_x") +
+  scale_colour_manual(values = c("Control" = "gray", "ALS-TDP" = "firebrick", "FTLD-TDP" = "darkblue", "ALS/FTLD" = "purple4", "ALS/AD" = "maroon")) +
+  labs(y = "raw counts", x = "", subtitle = "") +
+  guides(colour = FALSE) +
+  theme_jh() +
+  theme(panel.border = element_rect(fill =NA))
+
+# counts per millino
+tpm_by_disease_plot <-
+  tstmn2_diagnostics %>%
+  ggplot(aes( x = disease, y = tSTMN2_TPM, group = disease, colour = disease )) + 
+  geom_boxplot(fill = NA, colour = "black", outlier.colour = NA) +
+  geom_point(size = 0.5, position = position_jitter(width = 0.2, height = 0) ) + 
+    scale_y_continuous(trans='log10', breaks = c(0.1,1), limits = c(0.01, 2.5)) +
+  facet_wrap(~tissue, nrow = 1, scales = "free_x") +
+  scale_colour_manual(values = c("Control" = "gray", "ALS-TDP" = "firebrick", "FTLD-TDP" = "darkblue", "ALS/FTLD" = "purple4", "ALS/AD" = "maroon")) +
+  labs(y = "counts per million", x = "") +
+    labs(y = "counts per million", x = "", subtitle = "") +
+  guides(colour = FALSE) +
+  #ylim(0,1.8) + 
+  theme_jh() +
+  theme(panel.border = element_rect(fill =NA))
+
+
+tstmn2_counts_plot <- 
+  counts_by_disease_plot +
+  tpm_by_disease_plot +
+  plot_annotation(tag_levels = "A") +
+  plot_layout(nrow = 2) & 
+  theme(strip.text = element_text(margin = margin(t = 1, r = 0, b = 5, l = 0, unit = "pt")),
+        plot.tag = element_text(face = "bold",size = 14), 
+        panel.spacing = unit(1, "lines")  ) & coord_flip()
+
+tstmn2_counts_plot
+
+#ggsave(plot = tstmn2_counts_plot, file = here::here("figures/tSTMN2_detection_counts.png"), width = 14, height = 6, units = "in", dpi = 600 )
+#ggsave(plot = tstmn2_counts_plot, file = here::here("figures/tSTMN2_detection_counts.pdf"), width = 14, height = 6, units = "in")
+
+```
+
+## Effect of sequencing_platform and/or RIN on Truncated STMN2 detection in ALS-TDP
+
+```{r fig.width = 10, fig.height = 6}
+## effect of RIN?
+als_RIN_plot <- 
+  stmn2_data %>%
+  filter(!is.na(RIN)) %>%
+  filter(disease %in% c("ALS-TDP")) %>%
+  filter( tissue %in% c("Frontal Cortex", "Thoracic Spinal Cord", "Cervical Spinal Cord", "Lumbar Spinal Cord", "Medial Motor Cortex", "Lateral Motor Cortex")) %>%
+  mutate(stmn2_data = ifelse(tSTMN2_counts > 1, yes = "+", no = "-") ) %>% 
+  ggplot(aes(x = stmn2_data,y = RIN )) + 
+  geom_point( colour = "firebrick", size = 0.5, alpha = 0.9, position = position_jitter(width = 0.2, height = 0) ) + 
+    geom_boxplot(fill = NA, colour = "black", outlier.colour = NA) +
+  labs(title = "Truncated STMN2 detection and RIN") + 
+  facet_wrap(~disease + tissue, ncol = 6 ) + theme_jh() +
+  ggpubr::stat_compare_means(label = "p.format", label.x.npc = "center" ) +
+  labs(y = "RIN", x = "Truncated STMN2 detection") +
+  theme(axis.text.x = element_text(size = 15))
+
+stmn2_sequencing_platform <- 
+  stmn2_data %>%
+  filter(!is.na(RIN)) %>%
+  filter( tissue %in% c("Frontal Cortex","Thoracic Spinal Cord", "Cervical Spinal Cord", "Lumbar Spinal Cord", "Medial Motor Cortex", "Lateral Motor Cortex")) %>%
+  mutate(tissue = as.character(tissue)) %>%
+  filter( !is.na(sequencing_platform)) %>%
+  filter(disease %in% c("ALS-TDP")) %>%
+    mutate(stmn2_data = ifelse(tSTMN2_counts > 1, yes = "+", no = "-") )
+
+stmn2_data_fisher <- 
+  split(stmn2_sequencing_platform, stmn2_sequencing_platform$tissue) %>%
+  purrr::map_df( ~{tibble( p_value = fisher.test(table(stmn2 = .x$stmn2_data, sequencing_platform = .x$sequencing_platform  ))$p.value) }, .id = "tissue" ) 
+
+stmn2_sequencing_platform_pct <-
+  stmn2_sequencing_platform %>%
+  group_by(tissue, sequencing_platform, stmn2_data) %>% tally() %>%
+  spread(key = stmn2_data, value = n) %>%
+  mutate(detection = `+` / ( `-` + `+`) )
+
+
+
+als_sequencing_platform_plot <- 
+  stmn2_sequencing_platform_pct %>%
+  ggplot(aes(x = sequencing_platform, y = detection )) + 
+  geom_col(fill = "firebrick") +
+  labs(title = "Truncated STMN2 detection and sequencing platform", y = "Truncated STMN2 detection") + 
+  facet_wrap(~tissue, ncol = 6 ) +
+  theme_jh() +
+  scale_y_continuous(labels = scales::percent_format(accuracy = 1)) +
+  #scale_fill_manual("STMN2\nnovel\njunction", values = c("white", "firebrick")) +
+  geom_text(data = stmn2_data_fisher, aes(x = 1.5, y = 1.05, label = paste0("p = ", signif(p_value,digits = 2) ) )) +
+  theme(legend.text = element_text(size = 15))
+ # scale_y_continuous(expand = c(0,0) ) 
+
+als_RIN_plot + als_sequencing_platform_plot + plot_layout(nrow = 2)
+
+```
+
+## Effect of library size and full length STMN2 expression on truncated STMN2 discovery in ALS-TDP
+
+```{r fig.width = 10, fig.height = 8}
+# library size 
+
+als_plot_a <- 
+  stmn2_data %>%
+  filter(disease %in% c("ALS-TDP")) %>%
+  filter( tissue %in% c("Frontal Cortex", "Thoracic Spinal Cord", "Cervical Spinal Cord", "Lumbar Spinal Cord", "Medial Motor Cortex", "Lateral Motor Cortex")) %>%
+  mutate( tissue = factor( tissue, levels = c("Frontal Cortex", "Thoracic Spinal Cord", "Cervical Spinal Cord", "Lumbar Spinal Cord", "Medial Motor Cortex", "Lateral Motor Cortex")) ) %>%
+  mutate(stmn2_data = ifelse(tSTMN2_counts > 1, yes = "+", no = "-") ) %>% 
+  ggplot(aes(x = stmn2_data,y = log10(library_size) )) + 
+  geom_point(colour = "firebrick", size = 0.5, alpha = 0.9, position = position_jitter(width = 0.2, height = 0) ) + 
+    geom_boxplot(fill = NA, colour = "black", outlier.colour = NA) +
+  labs(title = "Truncated STMN2 detection and library size") + 
+  facet_wrap(~ tissue, ncol = 6 ) + theme_jh() +
+  ggpubr::stat_compare_means(label = "p.format", label.x.npc = "center", method = "wilcox" ) +
+  labs(y = "log10 library size", x = "Truncated STMN2 detection") +
+  theme(axis.text.x = element_text(size = 15))
+
+
+als_plot_d <- 
+  stmn2_data %>%
+    filter(disease %in% c("ALS-TDP")) %>%
+  filter(!is.na(sequencing_platform)) %>%
+  filter( tissue %in% c("Frontal Cortex", "Thoracic Spinal Cord", "Cervical Spinal Cord", "Lumbar Spinal Cord", "Medial Motor Cortex", "Lateral Motor Cortex")) %>%
+  mutate( tissue = factor( tissue, levels = c("Frontal Cortex", "Thoracic Spinal Cord", "Cervical Spinal Cord", "Lumbar Spinal Cord", "Medial Motor Cortex", "Lateral Motor Cortex")) ) %>%
+  mutate(stmn2_data = ifelse(tSTMN2_counts > 1, yes = "+", no = "-") ) %>% 
+  ggplot(aes(x = stmn2_data,y = STMN2_TPM )) + 
+  geom_point( colour = "firebrick", size = 0.5, alpha = 0.9, position = position_jitter(width = 0.2, height = 0) ) + 
+  geom_boxplot(fill = NA, colour = "black", outlier.colour = NA) +
+  labs(title = "Truncated STMN2 detection and STMN2 expression ") + 
+  facet_wrap(~ tissue, ncol = 6,scales = "free_y") + theme_jh() +
+  ggpubr::stat_compare_means(label = "p.format", label.x.npc = "center", method = "wilcox" ) +
+  labs(y = "STMN2 expression (TPM)", x = "Truncated STMN2 detection") +
+  theme(axis.text.x = element_text(size = 15))
+
+
+stmn2_data_technical_plot <- 
+ als_plot_a + als_plot_d + plot_layout(nrow = 2)
+
+stmn2_data_technical_plot
+
+
+
+##ggsave(plot =stmn2_data_technical_plot, width = 12, height = 10, filename = here::here("figures/tSTMN2_detection_ALS_technical_fig.pdf"), bg = "white" )
+
+##ggsave(plot =stmn2_data_technical_plot, width = 12, height = 10, filename = here::here("figures/tSTMN2_detection_ALS_technical_fig.png"), bg = "white", dpi =300 )
+
+
+```
+
+
+## Technical factors and STMN2 full-length expression explaining tSTMN2 in FTD-TDP
+
+```{r fig.width = 10, fig.height = 4}
+# library size 
+
+ftd_plot_libsize <- 
+  stmn2_data %>%
+  filter(disease %in% c("FTLD-TDP")) %>%
+  filter( tissue %in% c("Frontal Cortex",  "Temporal Cortex" )) %>%
+  mutate(tissue = factor(tissue, levels = c("Frontal Cortex", "Temporal Cortex"))) %>%
+  mutate(stmn2_data = ifelse(tSTMN2_counts > 1, yes = "+", no = "-") ) %>% 
+  ggplot(aes(x = stmn2_data,y = log10(library_size) )) + 
+  geom_point( colour = "darkblue", size = 0.5, alpha = 0.9, position = position_jitter(width = 0.2, height = 0) ) + 
+    geom_boxplot(fill = NA, colour = "black", outlier.colour = NA) +
+  #labs(title = "Truncated STMN2 detection and library size", subtitle = "FTD-TDP samples") + 
+  facet_wrap(~ tissue, ncol = 6 ) + theme_jh() +
+  ggpubr::stat_compare_means(label = "p.format", label.x.npc = "center", method = "wilcox" ) +
+  labs(y = "log10 library size", x = "Truncated STMN2 detection") +
+  theme(axis.text.x = element_text(size = 15))
+
+# percent coding bases
+# 
+# ftd_plot_coding_bases <- 
+#   stmn2_data %>%
+#     left_join(tech_df) %>%
+#   filter(disease %in% c("FTLD-TDP")) %>%
+#   filter( tissue %in% c("Frontal Cortex",  "Temporal Cortex" )) %>%
+#   mutate(tissue = factor(tissue, levels = c("Frontal Cortex", "Temporal Cortex", "Cerebellum" ))) %>%
+#   mutate(stmn2_data = ifelse(tSTMN2_counts > 1, yes = "+", no = "-") ) %>% 
+#   ggplot(aes(x = stmn2_data,y = pct_coding_bases )) + 
+#   geom_point( colour = "darkblue",size = 0.5, alpha = 0.9, position = position_jitter(width = 0.2, height = 0) ) + 
+#     geom_boxplot(fill = NA, colour = "black", outlier.colour = NA) +
+#   #labs(title = "Truncated STMN2 detection and % coding bases ", subtitle = "FTD-TDP samples") + 
+#   facet_wrap(~  tissue, ncol = 6 ) + theme_jh() +
+#   ggpubr::stat_compare_means(label = "p.format", label.x.npc = "center", method = "wilcox" ) +
+#   labs(y = "% coding bases", x = "Truncated STMN2 detection") +
+#   theme(axis.text.x = element_text(size = 15))
+# 
+# # coverage bias
+# 
+ftd_plot_RIN <-
+  stmn2_data %>%
+  filter(disease %in% c("FTLD-TDP")) %>%
+  filter( tissue %in% c("Frontal Cortex",  "Temporal Cortex" )) %>%
+  mutate(tissue = factor(tissue, levels = c("Frontal Cortex", "Temporal Cortex", "Cerebellum" ))) %>%
+  mutate(stmn2_data = ifelse(tSTMN2_counts > 1, yes = "+", no = "-") ) %>%
+  ggplot(aes(x = stmn2_data,y = RIN )) +
+  geom_point(colour = "darkblue", size = 0.5, alpha = 0.9, position = position_jitter(width = 0.2, height = 0) ) +
+    geom_boxplot(fill = NA, colour = "black", outlier.colour = NA) +
+  #labs(title = "Truncated STMN2 detection and 3' coverage bias", subtitle = "FTD-TDP samples") +
+  facet_wrap(~ tissue, ncol = 6 ) + theme_jh() +
+  ggpubr::stat_compare_means(label = "p.format", label.x.npc = "center", method = "wilcox" ) +
+  labs(y = "RIN", x = "Truncated STMN2 detection") +
+  theme(axis.text.x = element_text(size = 15))
+
+
+ftd_plot_stmn2 <- 
+  stmn2_data %>% 
+  filter(disease %in% c("FTLD-TDP")) %>%
+  filter( tissue %in% c("Frontal Cortex",  "Temporal Cortex" )) %>%
+  mutate(tissue = factor(tissue, levels = c("Frontal Cortex", "Temporal Cortex", "Cerebellum" ))) %>%
+  mutate(stmn2_data = ifelse(tSTMN2_counts > 1, yes = "+", no = "-") ) %>% 
+  ggplot(aes(x = stmn2_data,y = STMN2_TPM )) + 
+  geom_point( colour = "darkblue", size = 0.5, alpha = 0.9, position = position_jitter(width = 0.2, height = 0) ) + 
+    geom_boxplot(fill = NA, colour = "black", outlier.colour = NA) +
+  #labs(title = "Truncated STMN2 detection and STMN2 expression ", subtitle = "ALS-TDP samples") + 
+  facet_wrap(~tissue, ncol = 6,scales = "free_y") + theme_jh() +
+  ggpubr::stat_compare_means(label = "p.format", label.x.npc = "center", method = "wilcox" ) +
+  labs(y = "STMN2 expression (TPM)", x = "Truncated STMN2 detection") +
+  theme(axis.text.x = element_text(size = 15))
+
+ftd_technical_plot <- 
+  ftd_plot_RIN + ftd_plot_libsize + ftd_plot_stmn2 + plot_annotation(tag_levels = 'A') & theme(plot.tag = element_text(size = 12, face = "bold")) 
+
+#ggsave(plot = ftd_technical_plot, filename = here::here("figures/tSTMN2_truncated_FTD_technical.png"), width =14, height =4, dpi = 300)
+
+ftd_technical_plot 
+```
+
+## Truncated STMN2 detection in bulbar and limb onset ALS-TDP
+
+```{r fig.height = 4, fig.width = 10} 
+motor_onset_df <- 
+  stmn2_data %>%
+  filter(disease %in% c("ALS-TDP")) %>%
+  filter(site_of_motor_onset %in% c("Limb", "Bulbar")) %>%
+  filter( tissue %in% c("Thoracic Spinal Cord", "Cervical Spinal Cord", "Lumbar Spinal Cord","Medial Motor Cortex", "Lateral Motor Cortex", "Other Motor Cortex")) %>%
+  mutate(stmn2_detection = ifelse(tSTMN2_counts > 1, yes = "+", no = "-") ) 
+  
+
+site_of_motor_onset_fisher <- 
+  split(motor_onset_df, as.character(motor_onset_df$tissue) ) %>%
+  purrr::map_df( ~{tibble( p_value = fisher.test(table(stmn2 = .x$stmn2_detection, site_of_motor_onset = .x$site_of_motor_onset  ))$p.value) }, .id = "tissue" ) 
+
+site_of_motor_onset_plot <- 
+  motor_onset_df %>%
+  group_by(tissue, site_of_motor_onset, stmn2_detection) %>% 
+  tally() %>%
+  spread(key = stmn2_detection, value = n) %>%
+  mutate(detection = `+` / ( `-` + `+`) ) %>%
+  ggplot(aes(x = site_of_motor_onset, y = detection)) + geom_col(fill = "firebrick") +
+  scale_y_continuous(expand = c(0,0), limits = c(0,1),labels = scales::percent_format(accuracy = 1) ) +
+  geom_text(data = site_of_motor_onset_fisher, aes(x = 1.5, y = 0.9, label = paste0("p = ", signif(p_value,digits = 2) ) )) +
+  theme(legend.text = element_text(size = 15)) + 
+  facet_wrap(~tissue, nrow = 1) +
+  labs(x = "", y = "Truncated STMN2 detection rate") +
+  labs(title = "ALS-TDP: Site of onset of motor symptoms and tSTMN2 detection") +
+  theme_jh()
+
+site_of_motor_onset_plot
+```
+
+## Truncated STMN2 detection in ALS-TDP patients with C9orf72 expansions
+
+```{r fig.width = 10, fig.height = 4}
+als_c9 <- 
+  stmn2_data %>%
+  filter(disease %in% c("ALS-TDP")) %>%
+  filter(reported_mutations %in% c("C9orf72", "None")) %>%
+  mutate( reported_mutations = ifelse(reported_mutations == "C9orf72", "C9+", "C9-")) %>%
+  filter( tissue %in% c("Thoracic Spinal Cord", "Cervical Spinal Cord", "Lumbar Spinal Cord","Medial Motor Cortex", "Lateral Motor Cortex", "Other Motor Cortex")) %>%
+  mutate(stmn2_data = ifelse(tSTMN2_counts > 1, yes = "+", no = "-") ) 
+  
+
+#fisher.test(table(stmn2 = als_c9$stmn2_data, c9 =  als_c9$reported_mutations  ))
+  
+als_c9_fisher <- 
+  split(als_c9, as.character(als_c9$tissue) ) %>%
+  purrr::map_df( ~{tibble( p_value = fisher.test(table(stmn2 = .x$stmn2_data, c9= .x$reported_mutations  ))$p.value) }, .id = "tissue" ) 
+
+als_c9_plot <- 
+  als_c9 %>%
+  group_by(tissue, reported_mutations, stmn2_data) %>% 
+  tally() %>%
+  spread(key = stmn2_data, value = n, fill = 0) %>%
+  mutate(detection = `+` / ( `-` + `+`) ) %>%
+  ggplot(aes(x = reported_mutations, y = detection)) + geom_col(fill = "firebrick") +
+  scale_y_continuous(expand = c(0,0), limits = c(0,1),labels = scales::percent_format(accuracy = 1) ) +
+  geom_text(data = als_c9_fisher, aes(x = 1.5, y = 0.9, label = paste0("p = ", signif(p_value,digits = 2) ) )) +
+  theme(legend.text = element_text(size = 15)) + 
+  facet_wrap(~tissue, nrow =1 ) +
+  labs(x = "", y = "Truncated STMN2 detection rate") +
+    labs(title = "ALS-TDP: C9orf72 mutation status and tSTMN2 detection") +
+  theme_jh()
+
+
+als_c9_plot
+```
+
+## Truncated STMN2 detection in FTLD-TDP patients with C9orf72 expansions
+
+```{r fig.width = 4, fig.height = 4}
+ftd_c9 <- 
+  stmn2_data %>%
+  filter(disease %in% c("FTLD-TDP")) %>%
+  filter(reported_mutations %in% c("C9orf72", "None")) %>%
+  mutate( reported_mutations = ifelse(reported_mutations == "C9orf72", "C9+", "C9-")) %>%
+  filter( tissue %in% c("Frontal Cortex", "Temporal Cortex")) %>%
+  mutate(stmn2_data = ifelse(tSTMN2_counts > 1, yes = "+", no = "-") ) 
+  
+
+fisher.test(table(stmn2 = ftd_c9$stmn2_data, c9 = ftd_c9$reported_mutations  ))
+  
+ftd_c9_fisher <- 
+  split(ftd_c9, as.character(ftd_c9$tissue) ) %>%
+  purrr::map_df( ~{tibble( p_value = fisher.test(table(stmn2 = .x$stmn2_data, c9= .x$reported_mutations  ))$p.value) }, .id = "tissue" ) 
+
+ftd_c9_plot <-
+  ftd_c9 %>%
+  group_by(tissue, reported_mutations, stmn2_data) %>% 
+  tally() %>%
+  spread(key = stmn2_data, value = n, fill = 0) %>%
+  mutate(detection = `+` / ( `-` + `+`) ) %>%
+  ggplot(aes(x = reported_mutations, y = detection)) + geom_col(fill = "darkblue") +
+  scale_y_continuous(expand = c(0,0), limits = c(0,1), labels = scales::percent_format(accuracy = 1) ) +
+  geom_text(data = ftd_c9_fisher, aes(x = 1.5, y = 0.95, label = paste0("p = ", signif(p_value,digits = 2) ) )) +
+  theme(legend.text = element_text(size = 15)) + 
+  facet_wrap(~tissue, nrow = 1) +
+  labs(x = "", y = "Truncated STMN2 detection rate") +
+  labs(title = "FTLD-TDP: C9orf72 mutation status and tSTMN2 detection") +
+  theme_jh()
+
+ftd_c9_plot
+```
+
+
+## tSTMN2 detection in ALS-TDP and age of onset and death
+
+```{r fig.width = 10, fig.height = 4}
+
+als_tdp_age <-
+  stmn2_data %>%
+  mutate(tSTMN2_status = ifelse(tSTMN2_counts > 1, "tSTMN2 +", "tSTMN2 -")) %>%
+  filter(disease == "ALS-TDP") %>%
+  mutate( age_at_death = ifelse( age_at_death == "90 or older", 90, as.numeric(age_at_death) )) %>%
+  filter(!is.na(age_of_onset)) %>%
+  mutate( disease_length = age_at_death - age_of_onset) %>%
+  filter(tissue %in% c("Thoracic Spinal Cord", "Cervical Spinal Cord", "Lumbar Spinal Cord","Medial Motor Cortex", "Lateral Motor Cortex", "Other Motor Cortex") ) 
+
+
+als_tdp_age %>%
+  ggplot(aes(x = tSTMN2_status, y = age_at_death)) +
+  geom_jitter(width = 0.2, height = 0) +
+  geom_boxplot(fill = NA, outlier.colour = NA) + 
+  facet_wrap(~tissue, ncol = 6) + ggpubr::stat_compare_means(label = "p.format", label.x.npc = "centre", method = "wilcox.test") + theme_jh()
+
+als_tdp_age %>%
+  ggplot(aes(x = tSTMN2_status, y = age_of_onset)) +
+  geom_jitter(width = 0.2, height = 0) +
+  geom_boxplot(fill = NA, outlier.colour = NA) + 
+  facet_wrap(~tissue, ncol = 6) + ggpubr::stat_compare_means(label = "p.format", label.x.npc = "centre", method = "wilcox.test") + theme_jh()
+
+als_tdp_age %>%
+  ggplot(aes(x = tSTMN2_status, y = disease_length)) +
+  geom_jitter(width = 0.2, height = 0) +
+  geom_boxplot(fill = NA, outlier.colour = NA) + 
+  facet_wrap(~tissue, ncol = 6) + ggpubr::stat_compare_means(label = "p.format", label.x.npc = "centre", method = "wilcox.test") + theme_jh()
+
+
+als_tdp_age %>%
+  ggplot(aes(y = age_at_death, x = age_of_onset)) + geom_point(aes(colour = tSTMN2_status)) +
+  facet_wrap(~tSTMN2_status + tissue, ncol = 6) + geom_abline(slope =1 , intercept = 0) + theme_jh()
+
+
+als_tdp_age %>%
+  filter( tSTMN2_counts > 1) %>%
+  ggplot(aes(y = tSTMN2_TPM, x = age_of_onset)) + geom_point(aes(colour = tSTMN2_TPM)) +
+  facet_wrap(~tissue, ncol = 3) + geom_abline(slope =1 , intercept = 0) + theme_jh()
+
+
+als_tdp_age %>%
+  filter( tSTMN2_counts > 1) %>%
+  ggplot(aes(y = tSTMN2_TPM, x = age_at_death)) + geom_point(aes(colour = tSTMN2_TPM)) +
+  facet_wrap(~tissue, ncol = 3) + geom_abline(slope =1 , intercept = 0) + theme_jh()
+
+als_tdp_age %>%
+  filter( tSTMN2_counts > 1) %>%
+  ggplot(aes(y = tSTMN2_TPM, x = disease_length)) + geom_point(aes(colour = tSTMN2_TPM)) +
+  facet_wrap(~tissue, ncol = 3) + ggpubr::stat_cor() + theme_jh()
+
+
+
+```
+
+In both Cervical and Lumbar Spinal Cord, donors with detectable tSTMN2 have a later age of onset and a shorter length of time with the disease.
+
+What do we make of this? ALS can be a rapidly progressing disease and this is often seen in early onset cases. However lots of early-onset cases have a slowly progressing disease course.
+
+If we are more likely to observe tSTMN2 in cases that had a later disease onset but shorter disease course, what does this mean? Shorter disease course could mean either a more rapid progression or less time for motor neurons to get TDP pathology and die before the patient themselves die, perhaps of complications. We would need more clinical information (staging, measures of decline over time) to properly assess this.
+
+## FTLD-TDP - tSTMN2 detection and age at death
+
+Age of disease onset information is not provided for FTLD-TDP samples
+
+```{r}
+ftld_tdp_age <-
+  stmn2_data %>%
+  mutate(tSTMN2_status = ifelse(tSTMN2_counts > 1, "tSTMN2 +", "tSTMN2 -")) %>%
+  filter(disease == "FTLD-TDP") %>%
+  mutate( age_at_death = ifelse( age_at_death == "90 or older", 90, as.numeric(age_at_death) )) %>%
+ # filter(!is.na(age_of_onset)) %>%
+  mutate( disease_length = age_at_death - age_of_onset) %>%
+  filter(tissue %in% c("Frontal Cortex", "Temporal Cortex") ) 
+
+ftld_tdp_age %>%
+  ggplot(aes(x = tSTMN2_status, y = age_at_death)) +
+  geom_jitter(width = 0.2, height = 0) +
+  geom_boxplot(fill = NA, outlier.colour = NA) + 
+  facet_wrap(~tissue, ncol = 6) + ggpubr::stat_compare_means(label = "p.format", label.x.npc = "centre", method = "wilcox.test") + theme_jh()
+
+```
+

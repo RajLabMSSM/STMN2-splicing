@@ -1,20 +1,12 @@
-# STMN2 splicing project
+# Truncated stathmin-2 is a surrogate marker of TDP-43 pathology in frontotemporal dementia
 
-Jack Humphrey
+Investigating STMN2 cryptic splicing across the NYGC ALS consortium RNA-seq dataset.
 
-Investigating STMN2 cryptic splicing across the NYGC ALS consortium RNA-seq dataset and beyond.
+Jack Humphrey, Towfique Raj lab
 
 ## Contents
 
-[Project Specification](https://docs.google.com/document/d/1F_UhgegFlxlZr5xlEf8wALQkHnx7PszNA_neMyx37kY/edit?usp=sharing)
-
 [STMN2-pipeline](https://github.com/RajLabMSSM/STMN2-splicing/tree/master/STMN2-pipeline): a snakemake pipeline for extracting high quality junction reads and clustering them together
 
-[Exploratory plots](https://rajlabmssm.github.io/STMN2-splicing/STMN2_exploration.html)
-
-
-
-
-
-
+[Code to generate all plots in manuscript](https://rajlabmssm.github.io/STMN2-splicing/STMN2_create_figures.html)
 

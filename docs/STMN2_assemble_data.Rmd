@@ -1,0 +1,367 @@
+---
+title: "STMN2 splicing in the NYGC ALS Consortium"
+author: |
+  | Jack Humphrey
+  | Raj Lab
+  | Department of Neuroscience
+  | Icahn School of Medicine at Mount Sinai
+  | NYC, New York
+date: "`r Sys.Date()`"
+output: 
+  html_document:
+    code_folding: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(echo = FALSE, warn = FALSE, message = FALSE)
+options(knitr.table.format = "html")
+knitr::opts_chunk$set(out.width='90%', dpi=300, fig.width = 9)
+knitr::opts_chunk$set(echo = TRUE)
+
+#library(edgeR)
+#library(limma)
+#library(EDASeq)
+#library(variancePartition)
+library(ggplot2)
+#library(sva)
+library(dplyr)
+library(readr)
+library(tidyr)
+library(tibble)
+library(janitor)
+library(patchwork)
+library(ggfortify)
+library(ggALS)
+
+library(patchwork)
+```
+
+Prep:
+
+All samples filtered using same QC as rest of NYGC ALS projects. 19 samples of 1924 failed QC due to :
+
+alignment rate (>90%)
+ribosomal bases (<10%)
+mismatch rate (<1%)
+percentage duplication (<0.5%)
+percentage intergenic bases (<10.5%)
+percentage ribosomal bases (<0.1%)
+
+RIN not filtered on.
+
+## RERUN with 3 new QC-failed samples removed!
+
+
+```{r}
+
+support <- read_tsv(here::here("data/feb_2020_rna_support.tsv")) %>% as.data.frame()
+# 1926 samples
+
+
+qc_fails <- read_tsv(here::here("data/2020_02_10_RNA_samples_failing_QC.txt"))
+
+## March 26 2020 - NYGC tells me 3 other samples failed QC:
+new_qc_fails <- c("CGND-HRA-01586", "CGND-HRA-01597", "CGND-HRA-01617")
+
+all_qc_fails <- unique(c(new_qc_fails, qc_fails$external_sample_id))
+
+length(all_qc_fails)
+
+# clean support
+support <- dplyr::filter(support, ! sample %in% all_qc_fails )
+# 1905 samples pass QC
+
+
+## age is NA when subject was 90 or older. Set to character 
+support <- mutate(support, age = ifelse( is.na(age), yes = "90 or older", as.character(age) ))
+
+
+library_sizes <- 
+  read_tsv(here::here("STMN2-pipeline/results/all_nygc_feb_2020/all_nygc_feb_2020_library_sizes.tsv"),col_names = c("sample", "library_size") ) %>%
+  mutate( library_size = library_size / 2) %>%
+  mutate( sample = gsub("data/metrics/", "", sample) ) %>%
+  distinct()
+# 1860 samples have library sizes
+
+
+# support %>% filter(!is.na(rin) ) %>% mutate(low_rin = rin < 5) %>% group_by(tissue, disease, low_rin) %>% tally() %>% spread(key = low_rin, value = n ) %>% mutate( prop = `TRUE` / sum(`TRUE`, `FALSE`, na.rm = TRUE) )
+# 
+# support %>% 
+#   ggplot(aes(x = rin)) + 
+#   geom_histogram() + 
+#   facet_wrap(~tissue)
+
+support <-
+  support %>%
+  #filter( rin >= 0) %>%
+  inner_join(library_sizes, by = "sample")
+# 1846 samples in RNA have library size info
+
+
+## fix disease == "Other" samples
+# if disease_full contains ALS and FTLD then mark as ALS/FTLD
+# assume sample with ALS and Dementia (NOS) is ALS/FTLD
+support <- 
+  support %>%  
+  mutate( tissue = gsub("_", " ", tissue )) %>%
+  mutate(tissue = ifelse(tissue == "Unspecified Motor Cortex", yes = "Other Motor Cortex", no = tissue)) %>%
+  mutate( disease = case_when(
+    disease == "Other" & grepl("ALS", disease_full) & grepl("FTD|NOS", disease_full) ~ "ALS/FTLD",
+    disease == "Other" & grepl("ALS", disease_full) & !grepl("FTD|NOS", disease_full) ~ "ALS",
+    TRUE ~ disease
+  ))
+
+support <- 
+  support %>%
+  mutate(pathology = gsub("FTD", "FTLD", pathology)) %>%
+  mutate( pathology = case_when(
+    disease == "Control" ~ "Control",
+    disease == "FTD" & mutations == "C9orf72" ~ "FTLD-C9",
+    disease == "FTD" & mutations != "C9orf72" & ( is.na(pathology) | grepl("TDP", pathology) ) ~ "FTLD-TDP",
+    mutations == "SOD1" ~ "ALS-SOD1",
+    mutations == "C9orf72" & disease == "ALS" ~ "ALS-C9",
+    mutations != "C9orf72" & disease == "ALS" ~ "ALS",
+    disease == "ALS-FTD" ~ "ALS/FTLD",
+    disease == "ALS-AD" ~ "ALS/AD",
+    disease == "Other" ~ "Other",
+    TRUE ~ pathology
+  )) %>%
+  filter( ! tissue %in% c("Cell_Line", "Liver", "Sensory Cortex")) %>% # ignored these
+ filter(!duplicated(sample)) # remove single duplicated sample - CGND-HRA-00431 
+
+# 1838 samples remaining 
+
+
+#table(support$disease, support$pathology)
+
+# categorise into and ALS, FTLD, ALS/FTLD and +/- TDP-43
+support <-
+  support %>%
+  filter(disease != "Other") %>%
+  mutate( tdp_status = case_when(
+    disease == "Control" ~ "TDP-43 negative",
+    pathology %in% c("ALS", "ALS-C9", "ALS/FTLD", "ALS/AD", "FTLD-C9", "FTLD-TDP") ~ "TDP-43 positive",
+    pathology %in% c("ALS-SOD1","FTLD-TAU", "FTLD-FUS") ~ "TDP-43 negative",
+    TRUE ~ "unknown"
+  ) ) %>%
+    mutate( disease_set = case_when(
+    disease == "ALS" & tdp_status == "TDP-43 positive" ~ "ALS-TDP",
+    disease == "ALS" & tdp_status == "TDP-43 negative" ~ "ALS-SOD1",
+    disease == "FTD" & tdp_status == "TDP-43 positive" ~ "FTLD-TDP",
+    disease == "FTD" & pathology == "FTLD-TAU" ~ "FTLD-TAU",
+    disease == "FTD" & pathology == "FTLD-FUS" ~ "FTLD-FUS",
+    TRUE ~ pathology
+  ))
+
+# 1693 samples when Disease == Other are removed
+
+# only plot tissues with 20+ samples
+tissue_counts  <-
+  group_by(support, tissue ) %>% tally() %>% arrange(desc(n))
+
+#tissue_counts
+
+
+rownames(support) <- support$sample
+
+#table(support$pathology)
+
+# table(support$tissue, support$disease_set) %>% 
+#   knitr::kable() %>%
+#   kableExtra::kable_styling()
+# 
+
+tissues_to_plot <- tissue_counts %>%
+  filter(n >= 50) %>%
+  pull(tissue)
+
+group_counts <- group_by(support, tissue, disease_set) %>% tally()
+
+# create final group and tissue list
+samples_to_use <- 
+  group_counts %>% 
+  filter(n >=4, tissue %in% tissues_to_plot) %>%
+  tidyr::spread(key = disease_set, value = n)
+
+#samples_to_use
+
+conditions_to_use <- names(samples_to_use)[-1]
+tissues_to_use <- samples_to_use$tissue
+
+sets_to_use <- samples_to_use %>% 
+  gather(key = "condition", value = "n", -tissue) %>%
+  filter(!is.na(n)) %>%
+  mutate(set = paste(tissue, condition))
+
+
+#length(sets_to_use$set)
+
+# filter support
+
+support <- filter(support, paste(tissue, disease_set) %in% sets_to_use$set)
+# 1664 samples remaining
+
+#dim(support)
+
+#unique(sets_to_use$tissue)
+#unique(sets_to_use$condition)
+```
+
+Put together metadata
+
+
+Only use tissues with at least 40 individuals total
+Only compare groups with at least 4 individuals per group.
+
+This leaves me with the following groups:
+Control
+ALS-TDP
+ALS-SOD1 (SOD1 and ANG)
+ALS/FTLD
+ALS/AD
+FTLD-TDP
+FTLD-Tau
+FTLD-FUS
+
+
+## Total STMN2 expression (RSEM)
+
+```{r fig.width = 14, fig.height = 6}
+load("../../NYGC_ALS/data/feb_2020/gene_matrix.RData")
+gene_meta <- read_tsv("../../NYGC_ALS/data/misc/gencode.v30.tx2gene.tsv.gz") %>% janitor::clean_names()
+stmn2_ensemblid <- filter(gene_meta, genename == "STMN2") %>% pull(geneid) %>% unique()
+
+stmn2_tpm <- genes_tpm[stmn2_ensemblid, support$sample] %>% t()
+
+support$stmn2_tpm <- stmn2_tpm
+
+table(is.na(support$stmn2_tpm))
+# all 1664 samples have STMN2 TPM data
+
+support %>%
+  group_by(tissue) %>%
+  summarise(median(stmn2_tpm) )
+# 
+# 
+# stmn2_total <- support %>%
+#   filter( paste(tissue, disease_set) %in% sets_to_use$set) %>%
+#   mutate( disease_set = forcats::fct_relevel(disease_set, "Control"))  %>%
+#   filter(tissue %in% tissues_to_use) %>%
+#   mutate(tissue = factor(tissue, levels = c("Frontal Cortex", "Temporal Cortex","Lateral Motor Cortex", "Medial Motor Cortex", "Other Motor Cortex", "Motor Cortex", "Occipital Cortex", "Cerebellum", "Cervical Spinal Cord", "Thoracic Spinal Cord", "Lumbar Spinal Cord" ) ))
+
+```
+
+For all samples used here, get junctions and cluster with Leafcutter.
+Can I find evidence of TDP-43 linked splicing events? Do they correlate with cellular composition?
+
+STMN2 is both a neuronal marker and TDP-43 splicing target. Clustering junctions with leafcutter allows the quantification of both STMN2 expression and STMN2 mis-splicing. Do both of these variables correlate with cell-type composition?
+
+
+
+## STMN2 novel splicing
+
+```{r}
+
+# all CNS samples currently available
+all_junctions <- 
+  read.table(file = here::here("STMN2-pipeline/results/all_nygc_feb_2020/all_nygc_feb_2020_perind_numers.counts.gz"), header = TRUE, stringsAsFactors = FALSE)
+
+meta <- leafcutter::get_intron_meta(row.names(all_junctions))
+
+# find cluster containing novel junction
+stmn2_clu <- filter(meta, chr == 'chr8', start >= 79611214, end <= 79636802) %>%
+  pull(clu) %>%
+  unique()
+
+stmn2 <- all_junctions[ meta$clu == stmn2_clu, ]
+stmn2 <- rownames_to_column(stmn2, var = "junction")
+
+# reshape the table
+stmn2 <- 
+  tidyr::gather(stmn2, key = "sample", value = "counts", -junction) %>%
+ # tidyr::spread(key = junction, value = counts) %>%
+  mutate(sample = gsub(".Aligned.Quality.Sorted.bam", "", sample, fixed = TRUE) ) %>%
+  mutate(sample = gsub(".", "-", sample, fixed = TRUE)) %>%
+  inner_join(support, by = "sample") 
+
+
+
+# annotate junctions
+stmn2_meta <- leafcutter::get_intron_meta(stmn2$junction) %>%
+  mutate( anno = case_when( start ==79611214 & end == 79616822 ~ "novel_5SS",
+                            start == 79611214 & end == 79636802 ~ "major",
+                            start == 79611791 ~ "novel 3SS A",
+                            start == 79611433 ~ "novel 3SS B"))
+
+stmn2$junction_type <- stmn2_meta$anno
+
+# library size is in total reads 
+# divide by 2 to get read pairs
+# divide counts by total read pairs to normalise
+# times by 1e6 get per million
+
+stmn2$counts_tpm <- (stmn2$counts / (stmn2$library_size )  ) * 1e6
+
+
+stmn2_novel <-
+  stmn2 %>%
+  filter( paste(tissue, disease_set) %in% sets_to_use$set) %>%
+  filter(junction_type %in% c("novel_5SS"))
+
+dim(stmn2_novel)
+# 1659 samples have STMN2 junction results
+
+```
+  
+## Technical factors?
+
+```{r}
+tech_df <- read_tsv(here::here("data/all_rna_technical_metrics.tsv") ) %>%
+  rename(sample = external_sample_id) %>%
+  select(sample, starts_with("pct"), starts_with("pf"), starts_with("median"))
+
+```
+
+
+Produce tables
+
+Per sample in sets_to_use:
+ID
+sex
+age
+disease
+platform
+RIN
+library size
+STMN2 total expression / TPM
+Truncated STMN2 detection count
+Truncated STMN2 detections per million
+
+```{r}
+
+stmn2_clean_table <- 
+  stmn2_novel %>%
+  select(sample, donor = individual, tissue, sex, age_at_death = age, age_of_onset = onset,  disease_group = disease_set, site_of_motor_onset = motor_onset, reported_mutations = mutations, RIN = rin, sequencing_platform = platform, library_size, STMN2_TPM = stmn2_tpm, tSTMN2_counts = counts, tSTMN2_TPM = counts_tpm  )
+
+
+write_tsv(stmn2_clean_table, path = here::here("data/STMN2_NYGC_RNA_data.tsv"))
+
+stmn2_geo_table <- stmn2_novel %>% select(sample, quote)
+
+write_tsv(stmn2_geo_table, path = here::here("data/STMN2_NYGC_RNA_samples_with_quotes.tsv"))
+
+
+
+median(stmn2_clean_table$library_size)
+min(stmn2_clean_table$library_size)
+max(stmn2_clean_table$library_size)
+
+
+table(is.na(stmn2_clean_table$tSTMN2_counts))
+
+complete.cases(stmn2_clean_table)
+```
+
+
+

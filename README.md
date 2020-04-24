@@ -8,5 +8,5 @@ Jack Humphrey, Towfique Raj lab
 
 [STMN2-pipeline](https://github.com/RajLabMSSM/STMN2-splicing/tree/master/STMN2-pipeline): a snakemake pipeline for extracting high quality junction reads and clustering them together
 
-[Code to generate all plots in manuscript](https://rajlabmssm.github.io/STMN2-splicing/STMN2_create_figures.html)
+[Code to generate all plots in manuscript](https://rajlabmssm.github.io/STMN2-splicing/docs/STMN2_create_figures.html)
 

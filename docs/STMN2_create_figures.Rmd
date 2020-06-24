@@ -184,7 +184,7 @@ tstmn2_full_dataset <-
   summarise( samples = n(), stmn2_n = sum(stmn2_detection), stmn2_prop = sum(stmn2_detection) / n() ) %>%
   mutate( stmn2_prop_label = paste0(round(stmn2_prop * 100, digits = 1), "%")) %>%
   mutate( stmn2_prop_label = ifelse( stmn2_prop_label == "0%", "", stmn2_prop_label)) %>%
-  mutate( stmn2_prop_label = gsub("\\.", "·", stmn2_prop_label)) %>%
+ # mutate( stmn2_prop_label = gsub("\\.", "·", stmn2_prop_label)) %>%
   mutate(tissue = "Full Dataset")
 
 tstmn2_by_tissue <- 
@@ -194,15 +194,15 @@ tstmn2_by_tissue <-
   summarise( samples = n(), stmn2_n = sum(stmn2_detection), stmn2_prop = sum(stmn2_detection) / n() ) %>%
   mutate( stmn2_prop_label = paste0(round(stmn2_prop * 100, digits = 1), "%")) %>%
   mutate( stmn2_prop_label = ifelse( stmn2_prop_label == "0%", "", stmn2_prop_label)) %>%
-  mutate( stmn2_prop_label = gsub("\\.", "·", stmn2_prop_label)) %>%
+ # mutate( stmn2_prop_label = gsub("\\.", "·", stmn2_prop_label)) %>%
   ungroup() 
 
 
 tstmn2_all_samples <- 
   tibble(tissue = "Full Dataset", disease = "All samples", samples = nrow(stmn2_data), stmn2_n = stmn2_data %>% filter(tSTMN2_counts > 1) %>% nrow() ) %>%
   mutate(stmn2_prop = stmn2_n / samples) %>%
-  mutate(stmn2_prop_label = paste0( round(stmn2_prop * 100, digits = 1), "%")) %>%
-  mutate( stmn2_prop_label = gsub("\\.", "·", stmn2_prop_label))
+  mutate(stmn2_prop_label = paste0( round(stmn2_prop * 100, digits = 1), "%")) #%>%
+  #mutate( stmn2_prop_label = gsub("\\.", "·", stmn2_prop_label))
 
 
 stmn2_to_plot <-
@@ -242,8 +242,8 @@ stmn2_threshold_plot <-
 
 stmn2_threshold_plot
 
-#ggsave(plot = stmn2_threshold_plot, dpi = 600, width = 14, height = 9, filename = here::here("figures/tSTMN2_detection_by_tissue.png"), bg = "white" )
-#ggsave(plot = stmn2_threshold_plot, width = 14, height = 9, filename = here::here("figures/tSTMN2_detection_by_tissue.pdf"), bg = "white" ) 
+ggsave(plot = stmn2_threshold_plot, dpi = 600, width = 14, height = 9, filename = here::here("figures/tSTMN2_detection_by_tissue.png"), bg = "white" )
+ggsave(plot = stmn2_threshold_plot, width = 14, height = 9, filename = here::here("figures/tSTMN2_detection_by_tissue.pdf"), bg = "white" ) 
 
   
   # mutate( tdp_status = ifelse(tdp_status == "TDP-43 negative", yes = "-other", no = "-TDP")) %>%
@@ -325,7 +325,7 @@ als_matrix <- stmn2_data %>%
   group_by( disease) %>%
   summarise( samples = n() , stmn_prop = sum(stmn_hit) / n() ) %>%
   mutate( stmn2_prop_label = paste0(signif(stmn_prop * 100, digits = 3), "%" ) ) %>%
-  mutate( stmn2_prop_label = gsub("\\.", "·", stmn2_prop_label)) %>%
+  #mutate( stmn2_prop_label = gsub("\\.", "·", stmn2_prop_label)) %>%
   mutate( stmn2_prop_label = ifelse( stmn2_prop_label == "0%", "", stmn2_prop_label)) %>%
   mutate( sample_n = paste0(disease,"\nN = ",samples)) %>%
   mutate( sample_n = factor(sample_n,levels = sample_n) )
@@ -356,7 +356,7 @@ FTLD_matrix <-
   summarise( samples = n() , stmn_prop = sum(stmn_hit) / n() ) %>%
   mutate( stmn2_prop_label = paste0(signif(stmn_prop * 100, digits = 3), "%" ) ) %>%
   mutate( stmn2_prop_label = ifelse( stmn2_prop_label == "0%", "", stmn2_prop_label)) %>%
-  mutate( stmn2_prop_label = gsub("\\.", "·", stmn2_prop_label)) %>%
+  #mutate( stmn2_prop_label = gsub("\\.", "·", stmn2_prop_label)) %>%
   mutate( sample_n = paste0(disease,"\nN = ",samples)) %>%
   mutate( sample_n = factor(sample_n,levels = sample_n) )
 
@@ -386,7 +386,7 @@ tSTMN2_detection_spotlight <-
 tSTMN2_detection_spotlight
 
 #install.packages("svglite")
-#ggsave(plot = tSTMN2_detection_spotlight, file = here::here("figures/tSTMN2_detection_main_figure.pdf"), width = 14, height = 7, units = "in")
+ggsave(plot = tSTMN2_detection_spotlight, file = here::here("figures/tSTMN2_detection_main_figure.pdf"), width = 14, height = 7, units = "in")
 ```
 
 ### ALS/FTLD and ALS/AD
@@ -440,8 +440,8 @@ als_ftd_als_ad_plot <-
 
 als_ftd_als_ad_plot 
 
-#ggsave(plot = als_ftd_als_ad_plot, width = 12, height = 6, units = "in", dpi = 300, file = here::here("figures/tSTMN2_detection_ALSFTD_ALSAD.png") )
-#ggsave(plot = als_ftd_als_ad_plot, width = 12, height = 6, units = "in", file = here::here("figures/tSTMN2_detection_ALSFTD_ALSAD.pdf") )
+ggsave(plot = als_ftd_als_ad_plot, width = 12, height = 6, units = "in", dpi = 300, file = here::here("figures/tSTMN2_detection_ALSFTD_ALSAD.png") )
+ggsave(plot = als_ftd_als_ad_plot, width = 12, height = 6, units = "in", file = here::here("figures/tSTMN2_detection_ALSFTD_ALSAD.pdf") )
 ```
 
 
@@ -502,8 +502,8 @@ tstmn2_counts_plot <-
 
 tstmn2_counts_plot
 
-#ggsave(plot = tstmn2_counts_plot, file = here::here("figures/tSTMN2_detection_counts.png"), width = 14, height = 6, units = "in", dpi = 600 )
-#ggsave(plot = tstmn2_counts_plot, file = here::here("figures/tSTMN2_detection_counts.pdf"), width = 14, height = 6, units = "in")
+ggsave(plot = tstmn2_counts_plot, file = here::here("figures/tSTMN2_detection_counts.png"), width = 14, height = 6, units = "in", dpi = 600 )
+ggsave(plot = tstmn2_counts_plot, file = here::here("figures/tSTMN2_detection_counts.pdf"), width = 14, height = 6, units = "in")
 
 ```
 

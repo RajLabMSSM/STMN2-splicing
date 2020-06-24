@@ -360,8 +360,59 @@ max(stmn2_clean_table$library_size)
 
 table(is.na(stmn2_clean_table$tSTMN2_counts))
 
-complete.cases(stmn2_clean_table)
+#complete.cases(stmn2_clean_table)
 ```
 
+
+Write out gene counts table for GEO
+
+fix trailling -2 issue - removed for some samples but not for others
+```{r}
+
+stmn2_genes_counts <- genes_counts[ ,stmn2_clean_table$sample]
+
+geo_table <- readxl::read_excel("../misc/Samples_GEO_Submission_DF20200617_forJack.xlsx")
+
+trailing <- setdiff(geo_table$Sample_ID,names(stmn2_genes_counts) )
+trailing <- trailing[grepl("-2$", trailing)]
+
+# 4 samples have trailing -2 in the sample ID in GEO file that was cut off in stmn2_genes_counts
+gsub("-2$", "", trailing) %in% names(stmn2_genes_counts)
+
+
+# CGND-HRA-00431-2 and CGND-HRA-00431 are separate samples in geo_table but I only have stmn2_genes_counts for CGND-HRA-00431, which could be either
+# update - I never aligned CGND-HRA-00431-2
+
+# duplicate entry in GEO table - CGND-HRA-01288-2 twice:
+# CGND_13867 -> CGND-HRA-01288-2 and CGND_13569 -> CGND-HRA-01288-2 
+
+
+trailing <- trailing[ trailing != "CGND-HRA-00431-2"]
+trailed_samples <- gsub("-2$", "", trailing)
+
+
+fix_names <- tibble( gc_name = names(stmn2_genes_counts)  ) %>%
+  mutate( geo_name = ifelse(gc_name %in% trailed_samples, yes = paste0(gc_name, "-2"), no = gc_name ) ) %>%
+  mutate( match = geo_name == gc_name) 
+
+#length(intersect(fix_names$geo_name, geo_table$Sample_ID))
+
+fix_names
+
+names(stmn2_genes_counts) <- fix_names$geo_name
+
+stmn2_clean_table$sample <- names(stmn2_genes_counts)
+
+# select all samples that I have STMN2 metadata for
+
+
+
+stmn2_genes_counts <- rownames_to_column(stmn2_genes_counts, var = "EnsemblID")
+
+write_tsv(stmn2_genes_counts, path = "../misc/NYGC_GEO_counts.tsv.gz")
+
+
+
+```
 
 

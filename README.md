@@ -1,9 +1,9 @@
 # Truncated stathmin-2 is a marker of TDP-43 pathology in frontotemporal dementia
 
-# **under review at JCI**
+# **[now published in the Journal of Clinical Investigation](https://www.jci.org/articles/view/139741)**
 
 
-Investigating STMN2 cryptic splicing across the NYGC ALS consortium RNA-seq dataset.
+Investigating STMN2 cryptic splicing across the NYGC ALS consortium RNA-seq dataset (Data Freeze Februrary 2020)
 
 Jack Humphrey, Towfique Raj lab
 
